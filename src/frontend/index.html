@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DashRec - Diet Plan</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-brand">
+        <i data-lucide="activity" style="color: var(--primary-color);"></i>
+        <h1>DashRec</h1>
+      </div>
+      <nav class="nav-links">
+        <a href="index.html" class="nav-link active">Diet Plan</a>
+        <a href="profile.html" class="nav-link">Patient Profile</a>
+      </nav>
+    </header>
+
+    <main class="dashboard">
+      <!-- Section 2: Daily Diet Plan -->
+      <section class="main-content" aria-label="Daily Diet Plan">
+        <div class="card">
+          <h2 class="section-title">Recommended Daily DASH Menu</h2>
+          <p style="color: var(--text-base); margin-bottom: 2rem;">Tailored to your caloric needs, low sodium threshold, and vegetarian preferences.</p>
+          
+          <div id="meal-plan-container">
+            <!-- Meal Cards injected via Javascript -->
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  
+  <script src="app.js"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
