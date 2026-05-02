@@ -1,4 +1,4 @@
-# DashRec
+# Nourish
 
 🏗️ System Architecture & Workflow
 
