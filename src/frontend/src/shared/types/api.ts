@@ -1,6 +1,7 @@
 export type Gender = 'male' | 'female'
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active'
 export type BPStage = 'pre' | 'stage1' | 'stage2'
+export type UserRole = 'patient' | 'dietician'
 
 export type PatientProfile = {
   name: string
@@ -17,6 +18,7 @@ export type AuthUser = {
   id: string
   name: string
   mobile: string
+  role: UserRole
 }
 
 export type RegisterRequest = {
@@ -128,4 +130,86 @@ export type AiDashRecipeRecord = {
 export type AiDashRecipeListResponse = {
   total: number
   items: AiDashRecipeRecord[]
+}
+
+// ── Dietician ──────────────────────────────────────────────────────────────
+export type DieticianPatient = {
+  id: string
+  name: string
+  mobile: string
+  assigned: boolean
+  last_plan_status?: 'draft' | 'approved' | 'rejected'
+}
+
+export type DieticianPatientListResponse = {
+  total: number
+  patients: DieticianPatient[]
+}
+
+export type DieticianAssignmentResponse = {
+  id: string
+  dietician_id: string
+  patient_id: string
+  created_at: string
+}
+
+export type DieticianPlanItem = {
+  id: string
+  meal_slot: string
+  source_type: 'dataset' | 'ai'
+  payload_json: unknown
+}
+
+export type DieticianPlan = {
+  id: string
+  patient_id: string
+  status: 'draft' | 'approved' | 'rejected' | 'superseded'
+  created_by: string
+  approved_by: string | null
+  created_at: string
+  updated_at: string
+  items: DieticianPlanItem[]
+}
+
+export type DieticianPlanResponse = {
+  plan: DieticianPlan
+}
+
+export type DieticianPlanItemInput = {
+  meal_slot: string
+  source_type: 'dataset' | 'ai'
+  payload_json: unknown
+}
+
+export type DieticianPlanUpdateRequest = {
+  status?: 'draft' | 'approved' | 'rejected'
+  items?: DieticianPlanItemInput[]
+}
+
+export type RankMealsRequest = {
+  diet_pref: string
+  sodium_threshold_mg?: number
+  top_k: number
+}
+
+export type RankedMealsResponse = {
+  total_meals: number
+  meals: MealOption[]
+}
+
+export type DieticianAiKitchenRequest = {
+  meal_slot: string
+  recipe: AiDashRecipe
+}
+
+export type PatientPlanItem = {
+  meal_slot: string
+  source_type: 'dataset' | 'ai'
+  payload_json: unknown
+}
+
+export type PatientPlanResponse = {
+  plan_id: string | null
+  status: 'approved' | 'rejected' | 'draft' | 'superseded' | null
+  items: PatientPlanItem[]
 }

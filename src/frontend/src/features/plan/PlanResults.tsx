@@ -12,22 +12,22 @@ import { useState } from 'react'
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import KeyboardArrowUpRoundedIcon from '@mui/icons-material/KeyboardArrowUpRounded'
 import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded'
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded'
 
-import type { ConstraintsResponse, MealOption, PlanResponse } from '../../shared/types/api'
+import type {
+  ConstraintsResponse,
+  MealOption,
+  PlanResponse,
+  AiDashRecipe,
+  PatientPlanResponse,
+  PatientPlanItem,
+} from '../../shared/types/api'
 
 type PlanResultsProps = {
-  result: PlanResponse
-}
-
-function slotGroups(plan: MealOption[]): Array<[string, MealOption[]]> {
-  const grouped = new Map<string, MealOption[]>()
-  for (const item of plan) {
-    if (!grouped.has(item.meal_slot)) {
-      grouped.set(item.meal_slot, [])
-    }
-    grouped.get(item.meal_slot)?.push(item)
-  }
-  return Array.from(grouped.entries())
+  result:
+    | PlanResponse
+    | PatientPlanResponse
+    | { constraints?: ConstraintsResponse; items: Array<unknown> }
 }
 
 // ─── KPI Tile ────────────────────────────────────────────────────────────────
@@ -137,9 +137,24 @@ function StatPill({ label, value, warn }: { label: string; value: string; warn?:
 
 // ─── Meal Card ───────────────────────────────────────────────────────────────
 
-function MealCard({ meal }: { meal: MealOption }) {
+function MealCard({ item }: { item: PatientPlanItem }) {
   const [expanded, setExpanded] = useState(false)
-  const sodiumHigh = meal.unit_serving_sodium_mg > 600
+  const isAi = item.source_type === 'ai'
+  const payload = item.payload_json as MealOption | AiDashRecipe
+
+  // Handle both types of payloads
+  const foodName = isAi ? (payload as AiDashRecipe).title : (payload as MealOption).food_name
+  const calories = isAi
+    ? (payload as AiDashRecipe).nutrition_summary?.total_kcal
+    : (payload as MealOption).unit_serving_energy_kcal
+  const sodium = isAi
+    ? undefined
+    : (payload as MealOption).unit_serving_sodium_mg
+  const potassium = isAi
+    ? undefined
+    : (payload as MealOption).unit_serving_potassium_mg
+  
+  const sodiumHigh = sodium ? sodium > 600 : false
 
   return (
     <Paper
@@ -150,15 +165,33 @@ function MealCard({ meal }: { meal: MealOption }) {
         flexDirection: 'column',
         bgcolor: 'background.paper',
         border: '1px solid',
-        borderColor: '#e5ece5',
+        borderColor: isAi ? 'primary.100' : '#e5ece5',
         boxShadow: 'none',
         transition: 'box-shadow 0.18s ease, transform 0.18s ease',
+        position: 'relative',
         '&:hover': {
           boxShadow: '0 6px 24px rgba(15, 23, 42, 0.07)',
           transform: 'translateY(-1px)',
         },
       }}
     >
+      {isAi && (
+        <Chip
+          label="AI Kitchen"
+          size="small"
+          color="primary"
+          icon={<AutoAwesomeRoundedIcon style={{ fontSize: '0.8rem' }} />}
+          sx={{
+            position: 'absolute',
+            top: -10,
+            right: 16,
+            height: 20,
+            fontSize: '0.65rem',
+            fontWeight: 800,
+          }}
+        />
+      )}
+
       {/* Top row: name + chips */}
       <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -166,91 +199,57 @@ function MealCard({ meal }: { meal: MealOption }) {
             variant="subtitle1"
             sx={{ fontWeight: 700, lineHeight: 1.3, color: 'text.primary', mb: 0.5 }}
           >
-            {meal.food_name}
+            {foodName}
           </Typography>
-          <Button
-            size="small"
-            variant="text"
-            endIcon={<OpenInNewRoundedIcon sx={{ fontSize: '0.75rem !important' }} />}
-            onClick={() =>
-              window.open(
-                `https://www.google.com/search?q=${encodeURIComponent(`${meal.food_name} recipe`)}`,
-                '_blank',
-              )
-            }
-            aria-label={`Search recipe for ${meal.food_name} on Google`}
-            sx={{
-              fontSize: '0.7rem',
-              fontWeight: 500,
-              color: 'text.secondary',
-              p: 0,
-              minWidth: 'auto',
-              '&:hover': { color: 'primary.main', background: 'none' },
-            }}
-          >
-            Search recipe
-          </Button>
+          {!isAi ? (
+            <Button
+              size="small"
+              variant="text"
+              endIcon={<OpenInNewRoundedIcon sx={{ fontSize: '0.75rem !important' }} />}
+              onClick={() =>
+                window.open(
+                  `https://www.google.com/search?q=${encodeURIComponent(`${foodName} recipe`)}`,
+                  '_blank',
+                )
+              }
+              aria-label={`Search recipe for ${foodName} on Google`}
+              sx={{
+                fontSize: '0.7rem',
+                fontWeight: 500,
+                color: 'text.secondary',
+                p: 0,
+                minWidth: 'auto',
+                '&:hover': { color: 'primary.main', background: 'none' },
+              }}
+            >
+              Search recipe
+            </Button>
+          ) : (
+             <Typography variant="caption" color="text.secondary">
+               Custom DASH recipe
+             </Typography>
+          )}
         </Box>
-        <Stack direction="column" spacing={0.5} sx={{ alignItems: 'flex-end', flexShrink: 0 }}>
-          <Chip
-            size="small"
-            label={meal.course_type}
-            sx={{
-              bgcolor: 'background.default',
-              color: 'text.secondary',
-              border: '1px solid #e5ece5',
-              fontSize: '0.7rem',
-              height: 22,
-              boxShadow: 'none',
-              display: { xs: 'none', sm: 'inline-flex' },
-            }}
-          />
-          <Chip
-            size="small"
-            label={meal.diet_type}
-            sx={{
-              bgcolor: 'transparent',
-              color: 'primary.main',
-              border: '1px solid',
-              borderColor: 'rgba(30, 111, 92, 0.3)',
-              fontSize: '0.7rem',
-              height: 22,
-              boxShadow: 'none',
-              display: { xs: 'none', sm: 'inline-flex' },
-            }}
-          />
-        </Stack>
+        {!isAi && (
+          <Stack direction="column" spacing={0.5} sx={{ alignItems: 'flex-end', flexShrink: 0 }}>
+            <Chip
+              size="small"
+              label={(payload as MealOption).course_type}
+              sx={{
+                bgcolor: 'background.default',
+                color: 'text.secondary',
+                border: '1px solid #e5ece5',
+                fontSize: '0.7rem',
+                height: 22,
+                boxShadow: 'none',
+                display: { xs: 'none', sm: 'inline-flex' },
+              }}
+            />
+          </Stack>
+        )}
       </Stack>
 
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', mb: 1.5, display: { xs: 'flex', sm: 'none' } }}>
-        <Chip
-          size="small"
-          label={meal.course_type}
-          sx={{
-            bgcolor: 'background.default',
-            color: 'text.secondary',
-            border: '1px solid #e5ece5',
-            fontSize: '0.7rem',
-            height: 22,
-            boxShadow: 'none',
-          }}
-        />
-        <Chip
-          size="small"
-          label={meal.diet_type}
-          sx={{
-            bgcolor: 'transparent',
-            color: 'primary.main',
-            border: '1px solid',
-            borderColor: 'rgba(30, 111, 92, 0.3)',
-            fontSize: '0.7rem',
-            height: 22,
-            boxShadow: 'none',
-          }}
-        />
-      </Stack>
-
-      {/* Primary 3-stat row */}
+      {/* Primary stats row */}
       <Box
         sx={{
           display: 'flex',
@@ -262,16 +261,22 @@ function MealCard({ meal }: { meal: MealOption }) {
           flexWrap: { xs: 'wrap', sm: 'nowrap' },
         }}
       >
-        <StatPill label="Calories" value={`${meal.unit_serving_energy_kcal.toFixed(0)} kcal`} />
-        <StatPill
-          label="Sodium"
-          value={`${meal.unit_serving_sodium_mg.toFixed(0)} mg`}
-          warn={sodiumHigh}
-        />
-        <StatPill label="Potassium" value={`${meal.unit_serving_potassium_mg.toFixed(0)} mg`} />
+        {calories !== undefined && <StatPill label="Calories" value={`${Math.round(calories)} kcal`} />}
+        {sodium !== undefined && (
+          <StatPill
+            label="Sodium"
+            value={`${Math.round(sodium)} mg`}
+            warn={sodiumHigh}
+          />
+        )}
+        {potassium !== undefined && <StatPill label="Potassium" value={`${Math.round(potassium)} mg`} />}
+        
+        {isAi && (payload as AiDashRecipe).prep_time_minutes && (
+          <StatPill label="Time" value={`${(payload as AiDashRecipe).prep_time_minutes + (payload as AiDashRecipe).cook_time_minutes} min`} />
+        )}
       </Box>
 
-      {/* Expandable secondary nutrients */}
+      {/* Expandable details */}
       <Box sx={{ mt: 1 }}>
         <Button
           size="small"
@@ -296,9 +301,43 @@ function MealCard({ meal }: { meal: MealOption }) {
           {expanded ? 'Less details' : 'More details'}
         </Button>
         <Collapse in={expanded}>
-          <Box sx={{ display: 'flex', gap: { xs: 2, sm: 3 }, mt: 1.5, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
-            <StatPill label="Fibre" value={`${meal.unit_serving_fibre_g.toFixed(1)} g`} />
-            <StatPill label="Sat. Fat" value={`${meal.unit_serving_sfa_mg.toFixed(0)} mg`} />
+          <Box sx={{ mt: 1.5 }}>
+            {isAi ? (
+              <Stack spacing={1.5}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+                    Ingredients
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
+                    {(payload as AiDashRecipe).ingredients.map((ing, i) => (
+                      <Chip key={i} label={`${ing.quantity} ${ing.unit} ${ing.item}`} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
+                    ))}
+                  </Stack>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+                    Quick Steps
+                  </Typography>
+                  <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                    {(payload as AiDashRecipe).steps.slice(0, 3).map((step, i) => (
+                      <Typography key={i} variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
+                        • {step}
+                      </Typography>
+                    ))}
+                    {(payload as AiDashRecipe).steps.length > 3 && (
+                      <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
+                        + {(payload as AiDashRecipe).steps.length - 3} more steps
+                      </Typography>
+                    )}
+                  </Stack>
+                </Box>
+              </Stack>
+            ) : (
+              <Box sx={{ display: 'flex', gap: { xs: 2, sm: 3 } }}>
+                <StatPill label="Fibre" value={`${(payload as MealOption).unit_serving_fibre_g.toFixed(1)} g`} />
+                <StatPill label="Sat. Fat" value={`${(payload as MealOption).unit_serving_sfa_mg.toFixed(0)} mg`} />
+              </Box>
+            )}
           </Box>
         </Collapse>
       </Box>
@@ -309,13 +348,44 @@ function MealCard({ meal }: { meal: MealOption }) {
 // ─── PlanResults ──────────────────────────────────────────────────────────────
 
 export function PlanResults({ result }: PlanResultsProps) {
-  const grouped = slotGroups(result.plan)
+  const isStandardPlan = 'plan' in result
+  const isPatientPlan = 'items' in result && !isStandardPlan
+  const constraints = 'constraints' in result ? result.constraints : undefined
+  const items: PatientPlanItem[] = isStandardPlan
+    ? (result as PlanResponse).plan.map((m) => ({
+        meal_slot: m.meal_slot,
+        source_type: 'dataset',
+        payload_json: m,
+      }))
+    : isPatientPlan
+      ? (result as PatientPlanResponse).items
+      : ((result as { items: Array<PatientPlanItem> }).items ?? [])
+
+  const normalizedItems = items.map((item) => {
+    if (item?.payload_json && typeof item.payload_json === 'object' && 'food_name' in item.payload_json) {
+      return item
+    }
+    if ((item?.payload_json as any)?.food_name) {
+      return item
+    }
+    return {
+      ...item,
+      payload_json: item.payload_json ?? item,
+    }
+  })
+
+  const grouped = new Map<string, PatientPlanItem[]>()
+  for (const item of normalizedItems) {
+    if (!grouped.has(item.meal_slot)) grouped.set(item.meal_slot, [])
+    grouped.get(item.meal_slot)?.push(item)
+  }
+  const groups = Array.from(grouped.entries())
 
   return (
     <Stack spacing={{ xs: 3, sm: 4, md: 5 }}>
-      <ConstraintsSummary constraints={result.constraints} />
+      {constraints && <ConstraintsSummary constraints={constraints} />}
 
-      {grouped.map(([slot, meals]) => (
+      {groups.map(([slot, slotItems]) => (
         <Box key={slot}>
           <Box
             sx={{
@@ -332,16 +402,16 @@ export function PlanResults({ result }: PlanResultsProps) {
               {slot}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-              {meals.length} {meals.length === 1 ? 'option' : 'options'}
+              {slotItems.length} {slotItems.length === 1 ? 'option' : 'options'}
             </Typography>
           </Box>
           <Grid container spacing={{ xs: 1.5, sm: 2 }}>
-            {meals.map((meal) => (
+            {slotItems.map((item, idx) => (
               <Grid
                 size={{ xs: 12, md: 6 }}
-                key={`${slot}-${meal.food_name}-${meal.dash_score}`}
+                key={`${slot}-${idx}`}
               >
-                <MealCard meal={meal} />
+                <MealCard item={item} />
               </Grid>
             ))}
           </Grid>

@@ -1,5 +1,4 @@
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
-import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import RestaurantRoundedIcon from '@mui/icons-material/RestaurantRounded'
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded'
@@ -42,7 +41,7 @@ import { profileSchema, type ProfileSchema } from '../profile/schemas'
 import { apiClient } from '../../shared/api/client'
 import { clearAccessToken } from '../../shared/lib/auth'
 import { PageShell } from '../../shared/ui/PageShell'
-import type { AiDashRecipeRecord, PlanResponse } from '../../shared/types/api'
+import type { AiDashRecipeRecord } from '../../shared/types/api'
 import { AiKitchenDialog } from './AiKitchenDialog'
 import { RecipeHistoryPanel } from './RecipeHistoryPanel'
 
@@ -81,14 +80,6 @@ export function DashboardPage() {
   const [avatarMenuAnchor, setAvatarMenuAnchor] = useState<null | HTMLElement>(null)
   const avatarMenuOpen = Boolean(avatarMenuAnchor)
 
-  const [persistedPlan, setPersistedPlan] = useState<PlanResponse | undefined>(() => {
-    try {
-      const saved = localStorage.getItem('nourish_plan')
-      return saved ? (JSON.parse(saved) as PlanResponse) : undefined
-    } catch {
-      return undefined
-    }
-  })
   const [selectedRecipe, setSelectedRecipe] = useState<AiDashRecipeRecord | null>(null)
 
   const profileForm = useForm<ProfileSchema>({
@@ -110,6 +101,12 @@ export function DashboardPage() {
     enabled: meQuery.isSuccess,
   })
 
+  const patientPlanQuery = useQuery({
+    queryKey: ['my-plan'],
+    queryFn: apiClient.getMyPlan,
+    enabled: meQuery.isSuccess,
+  })
+
   const recipeHistoryQuery = useQuery({
     queryKey: ['dash-recipes'],
     queryFn: () => apiClient.listDashRecipes({ limit: 8, offset: 0 }),
@@ -124,24 +121,6 @@ export function DashboardPage() {
     },
   })
 
-  const generatePlanMutation = useMutation({
-    mutationFn: async () => {
-      const [result] = await Promise.all([
-        apiClient.generateMyPlan({ options_per_slot: 3, top_n_pool: 15 }),
-        new Promise((resolve) => setTimeout(resolve, 4000)),
-      ])
-      return result
-    },
-    onSuccess: (result) => {
-      try {
-        localStorage.setItem('nourish_plan', JSON.stringify(result))
-      } catch {
-        // storage quota exceeded — silently ignore
-      }
-      setPersistedPlan(result)
-    },
-  })
-
   const logoutMutation = useMutation({
     mutationFn: apiClient.logout,
     onSettled: () => {
@@ -153,14 +132,6 @@ export function DashboardPage() {
   const onSaveProfile = profileForm.handleSubmit(async (values) => {
     await saveProfileMutation.mutateAsync({ profile: values })
   })
-
-  const onGeneratePlan = async () => {
-    if (!profileQuery.isSuccess) {
-      setProfileModalOpen(true)
-      return
-    }
-    await generatePlanMutation.mutateAsync()
-  }
 
   const handleLogout = () => {
     logoutMutation.mutate()
@@ -194,7 +165,11 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!selectedRecipe && recipeHistoryQuery.data?.items?.length) {
-      setSelectedRecipe(recipeHistoryQuery.data.items[0])
+      const firstItem = recipeHistoryQuery.data.items[0]
+      if (firstItem) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSelectedRecipe(firstItem)
+      }
     }
   }, [recipeHistoryQuery.data?.items, selectedRecipe])
 
@@ -202,8 +177,9 @@ export function DashboardPage() {
     return null
   }
 
-  const planResult: PlanResponse | undefined =
-    generatePlanMutation.data ?? persistedPlan
+  const planResult = patientPlanQuery.data
+  const approvedPlan = planResult?.status === 'approved' ? planResult : null
+  const hasPlanResult = Boolean(planResult)
   const hasProfile = profileQuery.isSuccess
   const displayName = hasProfile ? profileQuery.data.profile.name : (meQuery.data?.name ?? '')
   const initials = displayName ? getInitials(displayName) : '?'
@@ -239,7 +215,9 @@ export function DashboardPage() {
               {getGreeting()}{displayName ? `, ${displayName.split(' ')[0]}` : ''}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-              Your DASH diet meal plan is ready when you are.
+              {approvedPlan
+                ? 'Your dietician-approved DASH plan is ready.'
+                : 'Your DASH diet meal plan is ready when you are.'}
             </Typography>
           </Box>
 
@@ -290,7 +268,7 @@ export function DashboardPage() {
                   sx: {
                     mt: 0.5,
                     minWidth: 160,
-                    boxShadow: '0 4px 24px rgba(15,23,42,0.1)',
+                    boxShadow: '0 4px 24px rgba(15, 23, 42, 0.1)',
                     border: '1px solid #e5ece5',
                   },
                 },
@@ -322,8 +300,8 @@ export function DashboardPage() {
           </Stack>
         </Stack>
 
-        {/* ── State 1: Generating ─────────────────────────────────────── */}
-        {generatePlanMutation.isPending && (
+        {/* ── State 1: Loading ─────────────────────────────────────── */}
+        {patientPlanQuery.isLoading && (
           <Paper
             sx={{
               p: { xs: 2.5, md: 6 },
@@ -365,7 +343,9 @@ export function DashboardPage() {
             >
               <RestaurantRoundedIcon sx={{ color: 'primary.main', fontSize: 26 }} />
             </Box>
-            <Typography variant="h6" sx={{ mb: 0.75, fontWeight: 700 }}>Building your plan…</Typography>
+            <Typography variant="h6" sx={{ mb: 0.75, fontWeight: 700 }}>
+              Loading your plan…
+            </Typography>
             <Typography color="text.secondary" variant="body2">
               Crunching nutrition data and finding the best DASH-compliant meals for you.
             </Typography>
@@ -373,7 +353,7 @@ export function DashboardPage() {
         )}
 
         {/* ── State 2: Idle — no plan yet ─────────────────────────────── */}
-        {!generatePlanMutation.isPending && !planResult && (
+        {!hasPlanResult && !patientPlanQuery.isLoading && (
           <Paper
             sx={{
               p: { xs: 2.5, md: 6 },
@@ -384,18 +364,17 @@ export function DashboardPage() {
           >
             <Box sx={{ maxWidth: 440, mx: 'auto' }}>
               <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
-                Ready for your meal plan?
+                No plan assigned yet
               </Typography>
               <Typography color="text.secondary" variant="body2" sx={{ mb: 4, lineHeight: 1.7 }}>
-                Generate a personalized DASH diet plan based on your current health profile and
-                preferences.
+                Your dietician will create a personalized DASH diet plan for you. In the meantime,
+                explore AI Kitchen to discover DASH-friendly recipes.
               </Typography>
               <Button
                 variant="contained"
                 size="large"
-                startIcon={<RefreshRoundedIcon />}
-                onClick={onGeneratePlan}
-                disabled={saveProfileMutation.isPending}
+                startIcon={<AutoAwesomeRoundedIcon />}
+                onClick={() => setAiKitchenOpen(true)}
                 sx={{
                   py: 1.5,
                   px: 4,
@@ -404,19 +383,62 @@ export function DashboardPage() {
                   '&:hover': { boxShadow: 'none' },
                 }}
               >
-                Generate Meal Plan
+                Open AI Kitchen
               </Button>
-              {generatePlanMutation.error ? (
-                <Alert severity="error" sx={{ mt: 3, textAlign: 'left' }}>
-                  {(generatePlanMutation.error as Error).message}
-                </Alert>
-              ) : null}
             </Box>
           </Paper>
         )}
 
-        {/* ── State 3: Plan ready ─────────────────────────────────────── */}
-        {planResult && !generatePlanMutation.isPending && (
+        {/* ── State 3: Pending approval ───────────────────────────────── */}
+        {planResult && planResult.status !== 'approved' && !patientPlanQuery.isLoading && (
+          <Paper
+            sx={{
+              p: { xs: 2.5, md: 6 },
+              textAlign: 'center',
+              border: '1px solid #e5ece5',
+              boxShadow: 'none',
+            }}
+          >
+            <Box sx={{ maxWidth: 480, mx: 'auto' }}>
+              <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
+                {planResult.status === 'rejected'
+                  ? 'Plan needs a revision'
+                  : planResult.status === 'draft'
+                    ? 'Plan awaiting approval'
+                    : 'No approved plan yet'}
+              </Typography>
+              <Typography color="text.secondary" variant="body2" sx={{ mb: 3, lineHeight: 1.7 }}>
+                {planResult.status === 'rejected'
+                  ? 'Your dietician has rejected the plan. A new plan will be generated for you.'
+                  : planResult.status === 'draft'
+                    ? 'Your dietician is reviewing your plan. You will see it here once it is approved.'
+                    : 'Once a dietician approves a plan, it will appear here.'}
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'center' }}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={<AutoAwesomeRoundedIcon />}
+                  onClick={() => setAiKitchenOpen(true)}
+                  sx={{ py: 1.25, px: 3.5, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}
+                >
+                  AI Kitchen
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => patientPlanQuery.refetch()}
+                  sx={{ py: 1.25, px: 3.5 }}
+                >
+                  Check again
+                </Button>
+              </Stack>
+            </Box>
+          </Paper>
+        )}
+
+        {/* ── State 4: Plan ready ─────────────────────────────────────── */}
+        {approvedPlan && !patientPlanQuery.isLoading && (
           <Box>
             {/* Section header with tab toggles + regenerate */}
             <Stack
@@ -455,7 +477,7 @@ export function DashboardPage() {
                     },
                   }}
                 >
-                  Suggested Recipes
+                  {approvedPlan.status === 'approved' ? 'My DASH Plan' : 'Suggested Recipes'}
                 </Button>
                 <Button
                   id="tab-ai-kitchen"
@@ -485,18 +507,7 @@ export function DashboardPage() {
               </Box>
 
               {/* Right-side action */}
-              {activeTab === 'suggested' ? (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<RefreshRoundedIcon />}
-                  onClick={onGeneratePlan}
-                  disabled={saveProfileMutation.isPending}
-                  sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
-                >
-                  Regenerate
-                </Button>
-              ) : (
+              {activeTab === 'ai-kitchen' && (
                 <Button
                   variant="outlined"
                   size="small"
@@ -509,14 +520,15 @@ export function DashboardPage() {
               )}
             </Stack>
 
-            {generatePlanMutation.error && activeTab === 'suggested' ? (
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {(generatePlanMutation.error as Error).message}
+            {approvedPlan.status === 'approved' && activeTab === 'suggested' && (
+              <Alert severity="success" sx={{ mb: 4 }}>
+                This plan was approved by your dietician. Follow it for best results.
               </Alert>
-            ) : null}
+            ) }
 
             {/* ── Tab content ── */}
-            {activeTab === 'suggested' && <PlanResults result={planResult} />}
+            {activeTab === 'suggested' && <PlanResults result={approvedPlan} />}
+...
 
             {activeTab === 'ai-kitchen' && (
                 <Grid container spacing={{ xs: 2, sm: 3 }}>

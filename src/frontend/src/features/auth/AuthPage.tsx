@@ -28,6 +28,7 @@ import { loginSchema, registerSchema, type LoginSchema, type RegisterSchema } fr
 
 export function AuthPage() {
   const [tab, setTab] = useState(1)
+  const [role, setRole] = useState<'patient' | 'dietician'>('patient')
   const [authError, setAuthError] = useState<string | null>(null)
   const navigate = useNavigate()
 
@@ -49,7 +50,7 @@ export function AuthPage() {
   })
 
   const registerMutation = useMutation({
-    mutationFn: apiClient.register,
+    mutationFn: role === 'patient' ? apiClient.register : apiClient.dieticianRegister,
     onSuccess: () => {
       setAuthError(null)
       setTab(1)
@@ -62,11 +63,15 @@ export function AuthPage() {
   })
 
   const loginMutation = useMutation({
-    mutationFn: apiClient.login,
+    mutationFn: role === 'patient' ? apiClient.login : apiClient.dieticianLogin,
     onSuccess: (result) => {
       setAuthError(null)
       setAccessToken(result.access_token)
-      navigate('/dashboard', { replace: true })
+      if (result.user.role === 'dietician') {
+        navigate('/dietician', { replace: true })
+      } else {
+        navigate('/dashboard', { replace: true })
+      }
     },
     onError: (error: Error) => {
       setAuthError(error.message)
@@ -138,7 +143,7 @@ export function AuthPage() {
             value={tab}
             onChange={(_, value: number) => setTab(value)}
             sx={{
-              mb: { xs: 3, sm: 4 },
+              mb: 2,
               borderBottom: 1,
               borderColor: 'divider',
               '& .MuiTab-root': {
@@ -151,6 +156,28 @@ export function AuthPage() {
           >
             <Tab label="Register" />
             <Tab label="Login" />
+          </Tabs>
+
+          <Tabs
+            value={role}
+            onChange={(_, value: 'patient' | 'dietician') => {
+              setRole(value)
+              setAuthError(null)
+            }}
+            sx={{
+              mb: { xs: 3, sm: 4 },
+              minHeight: 32,
+              '& .MuiTab-root': {
+                fontSize: '0.8rem',
+                minHeight: 32,
+                py: 0.5,
+                textTransform: 'none',
+              },
+            }}
+            centered
+          >
+            <Tab label="I'm a Patient" value="patient" />
+            <Tab label="I'm a Dietician" value="dietician" />
           </Tabs>
 
           {authError ? <Alert severity="error" sx={{ mb: 3 }}>{authError}</Alert> : null}
