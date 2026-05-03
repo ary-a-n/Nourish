@@ -5,11 +5,13 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from data.db import SessionLocal, User, Session as DBSession
+from data.db import SessionLocal
+from data.models import Session as DBSession
+from data.models import User
 
 SESSION_TTL_DAYS = 30
 
-# Database session utility functions
+
 def get_db():
     db = SessionLocal()
     try:
@@ -39,7 +41,7 @@ def _hash_password(password: str) -> str:
     digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return digest
 
-def create_user(mobile: str, password: str, name: str, db: Session | None = None) -> dict:
+def create_user(mobile: str, password: str, name: str, role: str = "patient", db: Session | None = None) -> dict:
     if len(password) < 6:
         raise ValueError("Password must be at least 6 characters")
 
@@ -54,12 +56,13 @@ def create_user(mobile: str, password: str, name: str, db: Session | None = None
             mobile=phone,
             password_hash=_hash_password(password),
             name=name.strip(),
+            role=role,
             created_at=datetime.now(timezone.utc),
         )
         session.add(user)
         session.commit()
         session.refresh(user)
-        return {"id": user.id, "mobile": user.mobile, "name": user.name}
+        return {"id": user.id, "mobile": user.mobile, "name": user.name, "role": user.role}
 
 def login_user(mobile: str, password: str, db: Session | None = None) -> dict:
     phone = normalize_mobile(mobile)
@@ -68,7 +71,7 @@ def login_user(mobile: str, password: str, db: Session | None = None) -> dict:
         if user is None or user.password_hash != _hash_password(password):
             raise ValueError("Invalid mobile number or password")
 
-        # Invalidate existing sessions for this user to prevent accumulation
+
         session.query(DBSession).filter(DBSession.user_id == user.id).delete()
 
         now = datetime.now(timezone.utc)
@@ -85,7 +88,7 @@ def login_user(mobile: str, password: str, db: Session | None = None) -> dict:
             "access_token": db_session.token,
             "token_type": "bearer",
             "expires_at": db_session.expires_at.isoformat(),
-            "user": {"id": user.id, "mobile": user.mobile, "name": user.name},
+            "user": {"id": user.id, "mobile": user.mobile, "name": user.name, "role": user.role},
         }
 
 def logout_user(token: str, db: Session | None = None):
@@ -115,4 +118,4 @@ def get_user_from_token(token: str, db: Session | None = None) -> dict:
         if user is None:
             raise ValueError("User not found for token")
 
-        return {"id": user.id, "mobile": user.mobile, "name": user.name}
+        return {"id": user.id, "mobile": user.mobile, "name": user.name, "role": user.role}

@@ -8,7 +8,8 @@ from app.models.schemas import (
 )
 from app.services.ai_recipe import generate_dash_recipe, save_dash_recipe
 from app.services.ai_recipe_store import get_dash_recipe_by_id, list_dash_recipes
-from app.services.auth import get_db, get_user_from_token
+from app.services.auth import get_db
+from app.services.permissions import get_patient_or_dietician_user, get_patient_user
 
 
 router = APIRouter(prefix="/v1/recipes", tags=["recipes"])
@@ -33,7 +34,7 @@ def generate_dash_recipe_for_user(
 ) -> AiDashRecipeResponse:
     token = _extract_bearer_token(authorization)
     try:
-        user = get_user_from_token(token, db=db)
+        user = get_patient_or_dietician_user(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
@@ -58,7 +59,7 @@ def list_dash_recipe_history(
 ) -> AiDashRecipeListResponse:
     token = _extract_bearer_token(authorization)
     try:
-        user = get_user_from_token(token, db=db)
+        user = get_patient_or_dietician_user(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
@@ -85,7 +86,7 @@ def get_dash_recipe_detail(
 ) -> AiDashRecipeRecord:
     token = _extract_bearer_token(authorization)
     try:
-        user = get_user_from_token(token, db=db)
+        user = get_patient_or_dietician_user(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 

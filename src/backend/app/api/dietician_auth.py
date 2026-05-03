@@ -1,16 +1,10 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from app.models.schemas import (
-    AuthLoginRequest,
-    AuthLoginResponse,
-    AuthRegisterRequest,
-    AuthRegisterResponse,
-    AuthUser,
-)
-from app.services.auth import create_user, get_db, get_user_from_token, login_user, logout_user
+from app.models.schemas import AuthLoginRequest, AuthLoginResponse, AuthRegisterRequest, AuthRegisterResponse, AuthUser
+from app.services.auth import get_db, get_user_from_token, login_user
+from app.services.dietician_auth import register_dietician
 
-
-router = APIRouter(prefix="/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/v1/dietician", tags=["dietician-auth"])
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -27,7 +21,7 @@ def _extract_bearer_token(authorization: str | None) -> str:
 @router.post("/register", response_model=AuthRegisterResponse)
 def register(payload: AuthRegisterRequest, db=Depends(get_db)) -> AuthRegisterResponse:
     try:
-        user = create_user(payload.mobile, payload.password, payload.name, role=payload.role, db=db)
+        user = register_dietician(payload.mobile, payload.password, payload.name, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return AuthRegisterResponse(user=AuthUser(**user))
@@ -39,6 +33,8 @@ def login(payload: AuthLoginRequest, db=Depends(get_db)) -> AuthLoginResponse:
         login_result = login_user(payload.mobile, payload.password, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    if login_result["user"]["role"] != "dietician":
+        raise HTTPException(status_code=403, detail="Dietician access required")
     login_result["user"] = AuthUser(**login_result["user"])
     return AuthLoginResponse(**login_result)
 
@@ -50,11 +46,6 @@ def auth_me(authorization: str | None = Header(default=None), db=Depends(get_db)
         user = get_user_from_token(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    if user["role"] != "dietician":
+        raise HTTPException(status_code=403, detail="Dietician access required")
     return AuthUser(**user)
-
-
-@router.post("/logout")
-def logout(authorization: str | None = Header(default=None), db=Depends(get_db)):
-    token = _extract_bearer_token(authorization)
-    logout_user(token, db=db)
-    return {"detail": "Successfully logged out"}

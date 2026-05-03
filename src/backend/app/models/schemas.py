@@ -36,21 +36,26 @@ class ConstraintsRequest(BaseModel):
     profile: PatientProfile
 
 
-class AuthRegisterRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    mobile: str = Field(min_length=13, max_length=13)
-    password: str = Field(min_length=6, max_length=128)
-
-
-class AuthLoginRequest(BaseModel):
-    mobile: str = Field(min_length=13, max_length=13)
-    password: str = Field(min_length=6, max_length=128)
+UserRole = Literal["patient", "dietician"]
 
 
 class AuthUser(BaseModel):
     id: str
     name: str
     mobile: str
+    role: UserRole
+
+
+class AuthRegisterRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    mobile: str = Field(min_length=13, max_length=13)
+    password: str = Field(min_length=6, max_length=128)
+    role: UserRole = "patient"
+
+
+class AuthLoginRequest(BaseModel):
+    mobile: str = Field(min_length=13, max_length=13)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class AuthRegisterResponse(BaseModel):
@@ -152,3 +157,77 @@ class AiDashRecipeRecord(BaseModel):
 class AiDashRecipeListResponse(BaseModel):
     total: int
     items: list[AiDashRecipeRecord]
+
+
+PlanStatus = Literal["draft", "approved", "rejected", "superseded"]
+
+
+class DieticianPatient(BaseModel):
+    id: str
+    name: str
+    mobile: str
+    assigned: bool
+
+
+class DieticianPatientListResponse(BaseModel):
+    total: int
+    patients: list[DieticianPatient]
+
+
+class DieticianAssignmentResponse(BaseModel):
+    patient_id: str
+    dietician_id: str
+    created_at: str
+
+
+PlanItemSource = Literal["dataset", "ai"]
+
+
+class DieticianPlanItem(BaseModel):
+    id: str
+    meal_slot: str
+    source_type: PlanItemSource
+    payload_json: dict
+
+
+class DieticianPlan(BaseModel):
+    id: str
+    patient_id: str
+    created_by: str
+    status: PlanStatus
+    approved_by: str | None = None
+    created_at: str
+    updated_at: str
+    items: list[DieticianPlanItem]
+
+
+class DieticianPlanResponse(BaseModel):
+    plan: DieticianPlan
+
+
+class DieticianPlanItemInput(BaseModel):
+    meal_slot: str
+    source_type: PlanItemSource
+    payload_json: dict
+
+
+class DieticianPlanUpdateRequest(BaseModel):
+    status: PlanStatus | None = None
+    items: list[DieticianPlanItemInput] | None = None
+
+
+class DieticianAiKitchenRequest(BaseModel):
+    meal_slot: str
+    recipe: AiDashRecipe
+
+
+class PatientPlanItem(BaseModel):
+    meal_slot: str
+    source_type: PlanItemSource
+    payload_json: dict
+
+
+class PatientPlanResponse(BaseModel):
+    plan_id: str | None = None
+    status: PlanStatus | None = None
+    items: list[PatientPlanItem]

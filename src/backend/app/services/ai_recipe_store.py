@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from data.db import AiDashRecipe as AiDashRecipeModel
+from data.models import AiDashRecipe as AiDashRecipeModel
 
 
 def list_dash_recipes(user_id: str, limit: int, offset: int, db: Session) -> list[AiDashRecipeModel]:

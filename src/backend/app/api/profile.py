@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.models.schemas import PatientProfile, SaveProfileRequest, SaveProfileResponse
-from app.services.auth import get_db, get_user_from_token
+from app.services.auth import get_db
+from app.services.permissions import get_patient_user
 from app.services.patient_profile_store import get_profile, save_profile
 
 
@@ -27,7 +28,7 @@ def upsert_profile(
 ) -> SaveProfileResponse:
     token = _extract_bearer_token(authorization)
     try:
-        user = get_user_from_token(token, db=db)
+        user = get_patient_user(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
@@ -45,7 +46,7 @@ def read_profile(
 ) -> SaveProfileResponse:
     token = _extract_bearer_token(authorization)
     try:
-        user = get_user_from_token(token, db=db)
+        user = get_patient_user(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 

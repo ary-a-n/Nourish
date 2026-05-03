@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from data.db import PatientProfile
+from data.models import PatientProfile
 
 
 def save_profile(user_id: str, profile: dict, db: Session) -> dict:

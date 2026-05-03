@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from app.models.schemas import ConstraintsResponse, MealOption, PatientProfile, PlanResponse
-from app.services.auth import get_db, get_user_from_token
+from app.models.schemas import ConstraintsResponse, MealOption, PatientPlanResponse, PatientProfile, PlanResponse
+from app.services.auth import get_db
+from app.services.permissions import get_patient_user
 from app.services.clinical_math import calculate_dash_tdee_and_constraints
+from app.services.dietician_store import get_latest_approved_plan
 from app.services.data_loader import load_recipes
 from app.services.patient_profile_store import get_profile
 from app.services.recommendation import generate_personalized_exchange_plan, rank_meals
@@ -88,7 +90,7 @@ def generate_plan_for_me(
 ) -> PlanResponse:
     token = _extract_bearer_token(authorization)
     try:
-        user = get_user_from_token(token, db=db)
+        user = get_patient_user(token, db=db)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
@@ -102,3 +104,52 @@ def generate_plan_for_me(
         top_n_pool=top_n_pool,
         random_seed=random_seed,
     )
+
+
+@router.get("/me", response_model=PatientPlanResponse)
+def get_patient_plan(
+    authorization: str | None = Header(default=None),
+    db=Depends(get_db),
+) -> PatientPlanResponse:
+    token = _extract_bearer_token(authorization)
+    try:
+        user = get_patient_user(token, db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    approved = get_latest_approved_plan(db=db, patient_id=user["id"])
+    if approved is not None:
+        plan, items = approved
+        item_payloads = [
+            {
+                "meal_slot": item.meal_slot,
+                "source_type": item.source_type,
+                "payload_json": item.payload_json,
+            }
+            for item in items
+        ]
+        return PatientPlanResponse(
+            plan_id=plan.id,
+            status=plan.status,
+            items=item_payloads,
+        )
+
+    profile = get_profile(user["id"], db)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    randomized = _build_plan(
+        profile=PatientProfile(**profile),
+        options_per_slot=3,
+        top_n_pool=15,
+        random_seed=None,
+    )
+    fallback_items = [
+        {
+            "meal_slot": item.meal_slot,
+            "source_type": "dataset",
+            "payload_json": item.model_dump(),
+        }
+        for item in randomized.plan
+    ]
+    return PatientPlanResponse(plan_id=None, status=None, items=fallback_items)

@@ -1,118 +1,9 @@
-# import json
-# import secrets
-# from datetime import datetime, timezone
-# from urllib import request
-
-# from sqlalchemy.orm import Session
-
-# from app.models.schemas import AiDashRecipeRequest, AiDashRecipe
-# from data.db import AiDashRecipe as AiDashRecipeModel
-
-
-# LM_STUDIO_URL = "http://127.0.0.1:1234/api/v1/chat"
-# DEFAULT_MODEL = "google/gemma-4-e4b"
-# DEFAULT_TEMPERATURE = 0.2
-# DEFAULT_MAX_OUTPUT_TOKENS = 1000
-
-
-# def _build_prompt(payload: AiDashRecipeRequest) -> dict:
-#     system = (
-#         "You are a nutrition assistant generating DASH-friendly recipes. "
-#         "IMPORTANT: Focus on the available items only. "
-#         "Return only valid JSON with keys: title, servings, prep_time_minutes, "
-#         "cook_time_minutes, ingredients (list), steps (list), dash_notes (list). "
-#         "Do not include markdown, code fences, or extra text."
-#     )
-#     user = {
-#         "meal_type": payload.meal_type,
-#         "diet_pref": payload.diet_pref,
-#         "available_items": payload.available_items,
-#         "health_constraints": payload.health_constraints,
-#         "allergies": payload.allergies,
-#         "cuisine": payload.cuisine,
-#         "time_minutes": payload.time_minutes,
-#         "servings": payload.servings,
-#         "notes": payload.notes,
-#     }
-#     return {
-#         "model": DEFAULT_MODEL,
-#         "system_prompt": system,
-#         "input": json.dumps(user),
-#         "temperature": DEFAULT_TEMPERATURE,
-#         "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
-#         "reasoning": "off",
-#     }
-
-
-# def _post_json(url: str, payload: dict) -> dict:
-#     data = json.dumps(payload).encode("utf-8")
-#     req = request.Request(
-#         url,
-#         data=data,
-#         headers={"Content-Type": "application/json"},
-#         method="POST",
-#     )
-#     with request.urlopen(req, timeout=90) as response:
-#         body = response.read().decode("utf-8")
-#     return json.loads(body)
-
-
-# def _extract_recipe(response_payload: dict) -> AiDashRecipe:
-#     output_items = response_payload.get("output", [])
-#     for item in output_items:
-#         if item.get("type") == "message":
-#             content = item.get("content", "").strip()
-#             if content.startswith("```"):
-#                 content = content.strip("`")
-#                 if content.startswith("json"):
-#                     content = content[4:].strip()
-#             start = content.find("{")
-#             if start == -1:
-#                 raise ValueError("Model response missing JSON object")
-#             decoder = json.JSONDecoder()
-#             try:
-#                 recipe_data, _ = decoder.raw_decode(content[start:])
-#             except json.JSONDecodeError as exc:
-#                 raise ValueError("Model response was not valid JSON") from exc
-#             return AiDashRecipe(**recipe_data)
-#     raise ValueError("Model response missing message content")
-
-
-# def generate_dash_recipe(payload: AiDashRecipeRequest) -> tuple[AiDashRecipe, dict]:
-#     prompt = _build_prompt(payload)
-#     response_payload = _post_json(LM_STUDIO_URL, prompt)
-#     recipe = _extract_recipe(response_payload)
-#     return recipe, {"prompt": prompt, "response": response_payload}
-
-
-# def save_dash_recipe(
-#     user_id: str,
-#     payload: AiDashRecipeRequest,
-#     recipe: AiDashRecipe,
-#     prompt_bundle: dict,
-#     db: Session,
-# ) -> AiDashRecipeModel:
-#     record = AiDashRecipeModel(
-#         id=secrets.token_hex(8),
-#         user_id=user_id,
-#         meal_type=payload.meal_type,
-#         diet_pref=payload.diet_pref,
-#         request_json={"request": payload.model_dump(), "prompt": prompt_bundle},
-#         result_json=recipe.model_dump(),
-#         created_at=datetime.now(timezone.utc),
-#     )
-#     db.add(record)
-#     db.commit()
-#     db.refresh(record)
-#     return record
-
 from __future__ import annotations
 
 import json
 import re
 import secrets
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib import request as urllib_request
 
 from sqlalchemy import create_engine, text
@@ -120,10 +11,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.models.schemas import AiDashRecipe, AiDashRecipeRequest
-from data.db import AiDashRecipe as AiDashRecipeModel
+from data.models import AiDashRecipe as AiDashRecipeModel
 from app.core.config import IFCT_DB_PATH
 
-# ─── Config ──────────────────────────────────────────────────────────────────
+
 
 LM_STUDIO_BASE = "http://127.0.0.1:1234/v1"       
 CHAT_URL = f"{LM_STUDIO_BASE}/chat/completions"
@@ -133,7 +24,7 @@ DEFAULT_MAX_TOKENS = 2048
 
 
 
-# ─── IFCT SQLite lookup ──────────────────────────────────────────────────────
+
 
 def _get_ifct_engine() -> Engine:
     return create_engine(
@@ -225,7 +116,7 @@ def search_food_nutrition(food_queries: list[str], top_k: int = 2) -> dict:
     return {"source": "IFCT2017", "results": results}
 
 
-# ─── Tool definition ─────────────────────────────────────────────────────────
+
 
 TOOLS = [
     {
@@ -262,7 +153,7 @@ TOOLS = [
 ]
 
 
-# ─── System prompt ────────────────────────────────────────────────────────────
+
 
 SYSTEM_PROMPT = """You are a DASH-diet nutrition-aware recipe assistant using IFCT 2017 Indian food data.
 
@@ -283,7 +174,7 @@ OUTPUT: Return ONLY valid JSON (no markdown, no code fences) with keys:
 """
 
 
-# ─── HTTP helper ─────────────────────────────────────────────────────────────
+
 
 def _post_json(url: str, payload: dict) -> dict:
     data = json.dumps(payload).encode("utf-8")
@@ -297,7 +188,7 @@ def _post_json(url: str, payload: dict) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-# ─── Tool call executor ───────────────────────────────────────────────────────
+
 
 def _execute_tool_call(tool_name: str, arguments: dict) -> str:
     if tool_name == "search_food_nutrition":
@@ -309,7 +200,7 @@ def _execute_tool_call(tool_name: str, arguments: dict) -> str:
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 
-# ─── Main agent loop ──────────────────────────────────────────────────────────
+
 
 def _run_agent(messages: list[dict]) -> str:
     """
@@ -333,14 +224,10 @@ def _run_agent(messages: list[dict]) -> str:
         choice = response["choices"][0]
         message = choice["message"]
 
-        # Append assistant turn to history
         messages.append(message)
 
-        # If no tool calls → final answer
         if not message.get("tool_calls"):
             return message.get("content", "")
-
-        # Execute each tool call and append results
         for tc in message["tool_calls"]:
             fn_name = tc["function"]["name"]
             try:
@@ -357,16 +244,13 @@ def _run_agent(messages: list[dict]) -> str:
                 "content": tool_result,
             })
 
-    # If still no final answer after 3 turns, return last content
     return messages[-1].get("content", "")
 
 
-# ─── Recipe extraction ────────────────────────────────────────────────────────
 
 def _extract_recipe(raw: str) -> AiDashRecipe:
     content = raw.strip()
 
-    # Strip markdown fences if model misbehaves
     if content.startswith("```"):
         content = re.sub(r"^```(?:json)?", "", content).strip()
         content = re.sub(r"```$", "", content).strip()
@@ -383,7 +267,7 @@ def _extract_recipe(raw: str) -> AiDashRecipe:
     return AiDashRecipe(**recipe_data)
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
+
 
 def generate_dash_recipe(payload: AiDashRecipeRequest) -> tuple[AiDashRecipe, dict]:
     user_message = {
